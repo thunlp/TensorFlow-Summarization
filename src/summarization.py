@@ -93,10 +93,8 @@ def train():
     logging.info("Preparing summarization data.")
     docid, sumid, doc_dict, sum_dict = \
         data_util.load_data(
-            # FLAGS.data_dir + "/train.article.txt",
-            # FLAGS.data_dir + "/train.title.txt",
-            FLAGS.data_dir + "/valid.article.filter.txt",
-            FLAGS.data_dir + "/valid.title.filter.txt",
+            FLAGS.data_dir + "/train.article.txt",
+            FLAGS.data_dir + "/train.title.txt",
             FLAGS.data_dir + "/doc_dict.txt",
             FLAGS.data_dir + "/sum_dict.txt",
             FLAGS.doc_vocab_size, FLAGS.sum_vocab_size)

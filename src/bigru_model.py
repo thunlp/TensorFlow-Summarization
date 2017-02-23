@@ -77,12 +77,22 @@ class BiGRUModel(object):
                             tf.concat(encoder_outputs, 2), size),
                         "bahdanau", size)
 
-                decoder_fn = tf.contrib.seq2seq.attention_decoder_fn_train(
-                    init_state, att_keys, att_values, att_scfn, att_cofn)
-
                 decoder_emb = tf.get_variable(
                     "embedding", [target_vocab_size, embedding_size],
                     initializer=emb_init)
+
+                if not forward_only:
+                    decoder_fn = tf.contrib.seq2seq.attention_decoder_fn_train(
+                        init_state, att_keys, att_values, att_scfn, att_cofn)
+
+                else:
+                    decoder_fn = \
+                        tf.contrib.seq2seq.attention_decoder_fn_inference(
+                            output_fn,
+                            init_state, att_keys, att_values,
+                            att_scfn, att_cofn, decoder_emb,
+                            data_util.ID_GO, data_util.ID_EOS,
+                            20, target_vocab_size)  # TODO maxlength 20
 
                 decoder_input_emb = tf.nn.embedding_lookup(
                     decoder_emb, self.decoder_input)
@@ -131,20 +141,14 @@ class BiGRUModel(object):
         input_feed[self.encoder_len] = encoder_len
         input_feed[self.decoder_len] = decoder_len
 
-        output_feed = [self.updates,  # Update Op that does SGD.
-                       self.loss]  # Loss for this batch.
-        # else:
-        #     output_feed = [self.losses[bucket_id]]  # Loss for this batch.
-        #     for l in range(decoder_size):  # Output logits.
-        #         output_feed.append(self.outputs[bucket_id][l])
+        if forward_only:
+            output_feed = [self.loss]
+        else:
+            output_feed = [self.loss, self.updates]
 
         outputs = session.run(output_feed, input_feed)
-        if not forward_only:
-            # No Gradient norm, loss, no outputs.
-            return outputs[1]
-        else:
-            # No gradient norm, loss, outputs.
-            return None, outputs[0], outputs[1:]
+        return outputs[0]
+
 
     def add_pad(self, data, fixlen):
         data = map(lambda x: x + [data_util.ID_PAD] * (fixlen - len(x)), data)
