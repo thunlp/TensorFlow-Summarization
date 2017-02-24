@@ -53,7 +53,7 @@ if __name__ == "__main__":
                 if os.path.exists(output_file):
                     logging.info("{} exists, skip testing".format(output_file))
                     continue
-                proc = ["python3", "src/seq2seq.py", "--test_file", data_pattern.format(dataset), \
+                proc = ["python3", "src/summarization.py", "--test_file", data_pattern.format(dataset), \
                         "--batch_size", str(beam_search), "--test_output", output_file, "--checkpoint", ckpt]
                 for k, v in test_params.items():
                     proc.append(k)
