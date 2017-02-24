@@ -139,7 +139,7 @@ def train():
             start_time = time.time()
             encoder_inputs, decoder_inputs, encoder_len, decoder_len = \
                 model.get_batch(train_set, bucket_id)
-            step_loss = model.step(
+            step_loss, _ = model.step(
                 sess, encoder_inputs, decoder_inputs,
                 encoder_len, decoder_len, False)
 
@@ -170,13 +170,53 @@ def train():
                         continue
                     encoder_inputs, decoder_inputs, encoder_len, decoder_len =\
                         model.get_batch(dev_set, bucket_id)
-                    eval_loss = model.step(sess, encoder_inputs,
+                    eval_loss, _ = model.step(sess, encoder_inputs,
                                             decoder_inputs, encoder_len,
                                             decoder_len, True)
                     eval_ppx = np.exp(float(eval_loss))
                     logging.info("  eval: bucket %d ppl %.2f" %
                                  (bucket_id, eval_ppx))
                 sys.stdout.flush()
+
+def decode():
+    assert FLAGS.batch_size == 1
+    # Load vocabularies.
+    doc_dict = data_util.load_dict(FLAGS.data_dir + "/doc_dict.txt")
+    sum_dict = data_util.load_dict(FLAGS.data_dir + "/sum_dict.txt")
+    if doc_dict is None or sum_dict is None:
+        logging.warning("Dict not found.")
+    data = data_util.load_test_data(FLAGS.test_file, doc_dict)
+
+    with tf.Session() as sess:
+        # Create model and load parameters.
+        logging.info("Creating %d layers of %d units." %
+                     (FLAGS.num_layers, FLAGS.size))
+        model = create_model(sess, True, True)
+
+        result = []
+        for idx, token_ids in enumerate(data):
+
+            # Get a 1-element batch to feed the sentence to the model.
+            encoder_inputs, decoder_inputs, encoder_len, decoder_len =\
+                model.get_batch(
+                    {0: [(token_ids, [data_util.ID_GO, data_util.ID_EOS])]}, 0)
+
+            loss, outputs = model.step(sess,
+                encoder_inputs, decoder_inputs,
+                encoder_len, decoder_len, True)
+
+
+            outputs = [np.argmax(item[0]) for item in outputs[0]]
+            # If there is an EOS symbol in outputs, cut them at that point.
+            if data_util.ID_EOS in outputs:
+                outputs = outputs[:outputs.index(data_util.ID_EOS)]
+            gen_sum = " ".join(data_util.sen_map2tok(outputs, sum_dict[1]))
+            gen_sum = data_util.sen_postprocess(gen_sum)
+            result.append(gen_sum)
+            logging.info("Finish {} samples. :: {}".format(idx, gen_sum[:75]))
+        with open(FLAGS.test_output, "w") as f:
+            for item in result:
+                print(item, file=f)
 
 def main(_):
     if FLAGS.decode:

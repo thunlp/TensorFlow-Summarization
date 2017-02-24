@@ -85,7 +85,42 @@ class BiGRUModel(object):
                     decoder_fn = tf.contrib.seq2seq.attention_decoder_fn_train(
                         init_state, att_keys, att_values, att_scfn, att_cofn)
 
+                    decoder_input_emb = tf.nn.embedding_lookup(
+                        decoder_emb, self.decoder_input)
+
+                    outputs, final_state, final_context_state = \
+                        tf.contrib.seq2seq.dynamic_rnn_decoder(
+                            cell, decoder_fn, inputs=decoder_input_emb,
+                            sequence_length=self.decoder_len)
+
+                    with tf.variable_scope("proj"):
+                        outputs_logits = tf.contrib.layers.fully_connected(
+                            outputs, target_vocab_size)
+
+                    weights = tf.sequence_mask(
+                        self.decoder_len, dtype=tf.float32)
+
+                    self.loss = tf.contrib.seq2seq.sequence_loss(
+                        outputs_logits, self.decoder_target, weights,
+                        average_across_timesteps=True,
+                        average_across_batch=True)
+
+                    params = tf.trainable_variables()
+                    opt = tf.train.AdadeltaOptimizer(
+                        self.learning_rate, epsilon=1e-6)
+                    gradients = tf.gradients(self.loss, params)
+                    clipped_gradients, norm = \
+                        tf.clip_by_global_norm(gradients, max_gradient)
+                    self.updates = opt.apply_gradients(
+                        zip(clipped_gradients, params),
+                        global_step=self.global_step)
+
                 else:
+                    self.loss = tf.constant(0)
+                    with tf.variable_scope("proj") as scope:
+                        output_fn = lambda x: tf.contrib.layers.fully_connected(
+                            x, target_vocab_size, scope=scope)
+
                     decoder_fn = \
                         tf.contrib.seq2seq.attention_decoder_fn_inference(
                             output_fn,
@@ -94,35 +129,11 @@ class BiGRUModel(object):
                             data_util.ID_GO, data_util.ID_EOS,
                             20, target_vocab_size)  # TODO maxlength 20
 
-                decoder_input_emb = tf.nn.embedding_lookup(
-                    decoder_emb, self.decoder_input)
-
-                outputs, final_state, final_context_state = \
-                    tf.contrib.seq2seq.dynamic_rnn_decoder(
-                        cell, decoder_fn, inputs=decoder_input_emb,
-                        sequence_length=self.decoder_len)
-
-                with tf.variable_scope("proj"):
-                    outputs_logits = tf.contrib.layers.fully_connected(
-                        outputs, target_vocab_size)
-
-                weights = tf.sequence_mask(
-                    self.decoder_len, dtype=tf.float32)
-
-                self.loss = tf.contrib.seq2seq.sequence_loss(
-                    outputs_logits, self.decoder_target, weights,
-                    average_across_timesteps=True,
-                    average_across_batch=True)
-
-                params = tf.trainable_variables()
-                opt = tf.train.AdadeltaOptimizer(
-                    self.learning_rate, epsilon=1e-6)
-                gradients = tf.gradients(self.loss, params)
-                clipped_gradients, norm = \
-                    tf.clip_by_global_norm(gradients, max_gradient)
-                self.updates = opt.apply_gradients(
-                    zip(clipped_gradients, params),
-                    global_step=self.global_step)
+                    outputs, final_state, final_context_state = \
+                        tf.contrib.seq2seq.dynamic_rnn_decoder(
+                            cell, decoder_fn, inputs=None,
+                            sequence_length=None)
+                    self.outputs = outputs
 
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=0)
 
@@ -142,12 +153,12 @@ class BiGRUModel(object):
         input_feed[self.decoder_len] = decoder_len
 
         if forward_only:
-            output_feed = [self.loss]
+            output_feed = [self.loss, self.outputs]
         else:
             output_feed = [self.loss, self.updates]
 
         outputs = session.run(output_feed, input_feed)
-        return outputs[0]
+        return outputs
 
 
     def add_pad(self, data, fixlen):
