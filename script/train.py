@@ -30,7 +30,7 @@ if __name__ == "__main__":
 
         logging.info("Train from {} to {}. ".format(global_step, terminate_step))
 
-        proc = ["python3", "src/seq2seq.py", "--max_iter", str(terminate_step)]
+        proc = ["python3", "src/summarization.py", "--max_iter", str(terminate_step)]
         for key, val in train_params.items():
             proc.append(key)
             proc.append(str(val))
@@ -38,4 +38,4 @@ if __name__ == "__main__":
 
         global_step = terminate_step
 
-        subprocess.call(["python3", "script/test_seq2seq.py"])
+        subprocess.call(["python3", "script/test.py"])

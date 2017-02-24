@@ -3,10 +3,10 @@ import subprocess
 import logging
 import os
 
-model_path = "model_seq/"
-model_pattern = "model_seq/{}.ckpt-{}"
+model_path = "model/"
+model_pattern = "model/{}.ckpt-{}"
 data_pattern = "data/test.{}.txt"
-OUTPUT_DIR = "beam_seq/"
+OUTPUT_DIR = "output/"
 OUTPUT_PATTERN = OUTPUT_DIR + "{dataset}.{description}.txt"
 MAX_KEEP = 1
 
