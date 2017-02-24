@@ -97,6 +97,8 @@ class BiGRUModel(object):
                         outputs_logits = tf.contrib.layers.fully_connected(
                             outputs, target_vocab_size)
 
+                    self.outputs = outputs_logits
+
                     weights = tf.sequence_mask(
                         self.decoder_len, dtype=tf.float32)
 
