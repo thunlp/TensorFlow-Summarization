@@ -93,9 +93,9 @@ class BiGRUModel(object):
                             cell, decoder_fn, inputs=decoder_input_emb,
                             sequence_length=self.decoder_len)
 
-                    with tf.variable_scope("proj"):
+                    with tf.variable_scope("proj") as scope:
                         outputs_logits = tf.contrib.layers.fully_connected(
-                            outputs, target_vocab_size)
+                            outputs, target_vocab_size, scope=scope)
 
                     self.outputs = outputs_logits
 
