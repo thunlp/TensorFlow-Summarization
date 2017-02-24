@@ -18,7 +18,7 @@ tf.app.flags.DEFINE_integer("num_layers", 1, "Number of layers in the model.")
 tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
 tf.app.flags.DEFINE_string("test_file", "", "Test filename.")
 tf.app.flags.DEFINE_string("test_output", "output.txt", "Test output.")
-tf.app.flags.DEFINE_string("train_dir", "mode", "Training directory.")
+tf.app.flags.DEFINE_string("train_dir", "model", "Training directory.")
 tf.app.flags.DEFINE_boolean("decode", False, "Set to True for testing.")
 tf.app.flags.DEFINE_boolean("fast_decode", False, "Use feed_previous. ")
 tf.app.flags.DEFINE_float(
