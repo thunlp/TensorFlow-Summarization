@@ -19,7 +19,7 @@ if __name__ == "__main__":
                         datefmt='%b %d %H:%M')
 
     try:
-        global_step = tf.contrib.framework.load_variable("model_seq", "global_step")
+        global_step = tf.contrib.framework.load_variable("model", "global_step")
     except:
         global_step = 0
 
