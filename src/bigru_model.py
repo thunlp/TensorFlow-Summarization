@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 
 import data_util
+import decoder_util
 
 emb_init = tf.truncated_normal_initializer(mean=0.0, stddev=0.01)
 fc_layer = tf.contrib.layers.fully_connected
@@ -76,7 +77,7 @@ class BiGRUModel(object):
                     tf.concat(encoder_outputs, 2), state_size)
 
                 att_keys, att_values, att_scfn, att_cofn = \
-                    tf.contrib.seq2seq.prepare_attention(
+                    decoder_util.prepare_attention(
                         att_states, "bahdanau", state_size)
 
                 decoder_emb = tf.get_variable(
@@ -84,7 +85,7 @@ class BiGRUModel(object):
                     initializer=emb_init)
 
                 if not forward_only:
-                    decoder_fn = tf.contrib.seq2seq.attention_decoder_fn_train(
+                    decoder_fn = decoder_util.attention_decoder_fn_train(
                         init_state, att_keys, att_values, att_scfn, att_cofn)
 
                     decoder_inputs_emb = tf.nn.embedding_lookup(
@@ -127,7 +128,7 @@ class BiGRUModel(object):
                             x, target_vocab_size, scope=scope)
 
                     decoder_fn = \
-                        tf.contrib.seq2seq.attention_decoder_fn_inference(
+                        decoder_util.attention_decoder_fn_inference(
                             output_fn,
                             init_state, att_keys, att_values,
                             att_scfn, att_cofn, decoder_emb,
