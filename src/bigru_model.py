@@ -102,10 +102,11 @@ class BiGRUModel(object):
                     weights = tf.sequence_mask(
                         self.decoder_len, dtype=tf.float32)
 
-                    self.loss = tf.contrib.seq2seq.sequence_loss(
+                    loss_t = tf.contrib.seq2seq.sequence_loss(
                         outputs_logits, self.decoder_target, weights,
-                        average_across_timesteps=True,
+                        average_across_timesteps=False,
                         average_across_batch=True)
+                    self.loss = tf.reduce_sum(loss_t)
 
                     params = tf.trainable_variables()
                     opt = tf.train.AdadeltaOptimizer(
