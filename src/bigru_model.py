@@ -6,7 +6,7 @@ import tensorflow as tf
 import data_util
 
 emb_init = tf.truncated_normal_initializer(mean=0.0, stddev=0.01)
-
+fc_layer = tf.contrib.layers.fully_connected
 
 class BiGRUModel(object):
 
@@ -14,7 +14,7 @@ class BiGRUModel(object):
                  source_vocab_size,
                  target_vocab_size,
                  buckets,
-                 size,
+                 state_size,
                  num_layers,
                  embedding_size,
                  max_gradient,
@@ -33,18 +33,18 @@ class BiGRUModel(object):
         self.learning_rate = learning_rate
         self.global_step = tf.Variable(0, trainable=False, name="global_step")
 
-        self.encoder_input = tf.placeholder(
+        self.encoder_inputs = tf.placeholder(
             tf.int32, shape=[self.batch_size, None])
-        self.decoder_input = tf.placeholder(
+        self.decoder_inputs = tf.placeholder(
             tf.int32, shape=[self.batch_size, None])
-        self.decoder_target = tf.placeholder(
+        self.decoder_targets = tf.placeholder(
             tf.int32, shape=[self.batch_size, None])
         self.encoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
         self.decoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
 
-        single_cell = tf.contrib.rnn.GRUCell(size)
+        single_cell = tf.contrib.rnn.GRUCell(state_size)
         if use_lstm:
-            single_cell = tf.contrib.rnn.BasicLSTMCell(size)
+            single_cell = tf.contrib.rnn.BasicLSTMCell(state_size)
         cell = single_cell
         if num_layers > 1:
             cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
@@ -58,24 +58,26 @@ class BiGRUModel(object):
                     "embedding", [source_vocab_size, embedding_size],
                     initializer=emb_init)
 
-                encoder_input_emb = tf.nn.embedding_lookup(
-                    encoder_emb, self.encoder_input)
+                encoder_inputs_emb = tf.nn.embedding_lookup(
+                    encoder_emb, self.encoder_inputs)
 
                 encoder_outputs, encoder_states = \
                     tf.nn.bidirectional_dynamic_rnn(
-                        cell, cell, encoder_input_emb,
+                        cell, cell, encoder_inputs_emb,
                         sequence_length=self.encoder_len, dtype=dtype)
 
             with tf.variable_scope("init_state"):
-                init_state = tf.contrib.layers.fully_connected(
-                    tf.concat(encoder_states, 1), size)
+                init_state = fc_layer(
+                    tf.concat(encoder_states, 1), state_size)
 
             with tf.variable_scope("decoder"):
+                #TODO encoder and decoder state size must fit for attention
+                att_states = fc_layer(
+                    tf.concat(encoder_outputs, 2), state_size)
+
                 att_keys, att_values, att_scfn, att_cofn = \
                     tf.contrib.seq2seq.prepare_attention(
-                        tf.contrib.layers.fully_connected(
-                            tf.concat(encoder_outputs, 2), size),
-                        "bahdanau", size)
+                        att_states, "bahdanau", state_size)
 
                 decoder_emb = tf.get_variable(
                     "embedding", [target_vocab_size, embedding_size],
@@ -85,16 +87,16 @@ class BiGRUModel(object):
                     decoder_fn = tf.contrib.seq2seq.attention_decoder_fn_train(
                         init_state, att_keys, att_values, att_scfn, att_cofn)
 
-                    decoder_input_emb = tf.nn.embedding_lookup(
-                        decoder_emb, self.decoder_input)
+                    decoder_inputs_emb = tf.nn.embedding_lookup(
+                        decoder_emb, self.decoder_inputs)
 
                     outputs, final_state, final_context_state = \
                         tf.contrib.seq2seq.dynamic_rnn_decoder(
-                            cell, decoder_fn, inputs=decoder_input_emb,
+                            cell, decoder_fn, inputs=decoder_inputs_emb,
                             sequence_length=self.decoder_len)
 
                     with tf.variable_scope("proj") as scope:
-                        outputs_logits = tf.contrib.layers.fully_connected(
+                        outputs_logits = fc_layer(
                             outputs, target_vocab_size, scope=scope)
 
                     self.outputs = outputs_logits
@@ -103,7 +105,7 @@ class BiGRUModel(object):
                         self.decoder_len, dtype=tf.float32)
 
                     loss_t = tf.contrib.seq2seq.sequence_loss(
-                        outputs_logits, self.decoder_target, weights,
+                        outputs_logits, self.decoder_targets, weights,
                         average_across_timesteps=False,
                         average_across_batch=True)
                     self.loss = tf.reduce_sum(loss_t)
@@ -121,7 +123,7 @@ class BiGRUModel(object):
                 else:
                     self.loss = tf.constant(0)
                     with tf.variable_scope("proj") as scope:
-                        output_fn = lambda x: tf.contrib.layers.fully_connected(
+                        output_fn = lambda x: fc_layer(
                             x, target_vocab_size, scope=scope)
 
                     decoder_fn = \
@@ -149,9 +151,9 @@ class BiGRUModel(object):
              forward_only):
 
         input_feed = {}
-        input_feed[self.encoder_input.name] = encoder_inputs
-        input_feed[self.decoder_input.name] = decoder_inputs[:, :-1]
-        input_feed[self.decoder_target.name] = decoder_inputs[:, 1:]
+        input_feed[self.encoder_inputs.name] = encoder_inputs
+        input_feed[self.decoder_inputs.name] = decoder_inputs[:, :-1]
+        input_feed[self.decoder_targets.name] = decoder_inputs[:, 1:]
         input_feed[self.encoder_len] = encoder_len
         input_feed[self.decoder_len] = decoder_len
 
