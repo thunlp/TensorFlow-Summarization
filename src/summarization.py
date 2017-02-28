@@ -145,7 +145,8 @@ def train():
 
             step_time += (time.time() - start_time) / \
                 FLAGS.steps_per_validation
-            loss += step_loss / FLAGS.steps_per_validation
+            loss += step_loss * FLAGS.batch_size / np.sum(decoder_len) \
+                / FLAGS.steps_per_validation
             current_step += 1
 
             # Once in a while, we save checkpoint.
@@ -173,6 +174,8 @@ def train():
                     eval_loss, _ = model.step(sess, encoder_inputs,
                                             decoder_inputs, encoder_len,
                                             decoder_len, True)
+                    eval_loss = eval_loss * FLAGS.batch_size \
+                        / np.sum(decoder_len)
                     eval_ppx = np.exp(float(eval_loss))
                     logging.info("  eval: bucket %d ppl %.2f" %
                                  (bucket_id, eval_ppx))
