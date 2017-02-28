@@ -208,8 +208,8 @@ def decode():
                 encoder_inputs, decoder_inputs,
                 encoder_len, decoder_len, True)
 
+            outputs = [np.argmax(item) for item in outputs[0]]
 
-            outputs = [np.argmax(item[0]) for item in outputs[0]]
             # If there is an EOS symbol in outputs, cut them at that point.
             if data_util.ID_EOS in outputs:
                 outputs = outputs[:outputs.index(data_util.ID_EOS)]
