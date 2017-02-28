@@ -24,7 +24,6 @@ class BiGRUModel(object):
                  use_lstm=False,
                  num_samples=10000,
                  forward_only=False,
-                 feed_previous=False,
                  dtype=tf.float32):
 
         self.source_vocab_size = source_vocab_size
@@ -121,6 +120,7 @@ class BiGRUModel(object):
                         zip(clipped_gradients, params),
                         global_step=self.global_step)
 
+                    tf.summary.scalar('loss', self.loss)
                 else:
                     self.loss = tf.constant(0)
                     with tf.variable_scope("proj") as scope:
@@ -142,6 +142,7 @@ class BiGRUModel(object):
                     self.outputs = outputs
 
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=0)
+        self.summary_merge = tf.summary.merge_all()
 
     def step(self,
              session,
@@ -149,7 +150,8 @@ class BiGRUModel(object):
              decoder_inputs,
              encoder_len,
              decoder_len,
-             forward_only):
+             forward_only,
+             summary_writer=None):
 
         #TODO check max encoder_len fits encoder_inputs
         #TODO check max decoder_len fits decoder_inputs
@@ -166,8 +168,12 @@ class BiGRUModel(object):
         else:
             output_feed = [self.loss, self.updates]
 
+        if summary_writer:
+            output_feed += [self.summary_merge, self.global_step]
+
         outputs = session.run(output_feed, input_feed)
-        return outputs
+        summary_writer.add_summary(outputs[2], outputs[3])
+        return outputs[:2]
 
 
     def add_pad(self, data, fixlen):

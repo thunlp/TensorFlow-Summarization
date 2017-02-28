@@ -19,6 +19,7 @@ tf.app.flags.DEFINE_string("data_dir", "data", "Data directory")
 tf.app.flags.DEFINE_string("test_file", "", "Test filename.")
 tf.app.flags.DEFINE_string("test_output", "output.txt", "Test output.")
 tf.app.flags.DEFINE_string("train_dir", "model", "Training directory.")
+tf.app.flags.DEFINE_string("tfboard", "tfboard", "Tensorboard log directory.")
 tf.app.flags.DEFINE_boolean("decode", False, "Set to True for testing.")
 tf.app.flags.DEFINE_boolean("fast_decode", False, "Use feed_previous. ")
 tf.app.flags.DEFINE_float(
@@ -57,7 +58,7 @@ def create_bucket(source, target):
     return data_set
 
 
-def create_model(session, forward_only, feed_previous):
+def create_model(session, forward_only):
     """Create model and initialize or load parameters in session."""
     dtype = tf.float32
     model = bigru_model.BiGRUModel(
@@ -72,7 +73,6 @@ def create_model(session, forward_only, feed_previous):
         FLAGS.learning_rate,
         num_samples=0,
         forward_only=forward_only,
-        feed_previous=feed_previous,
         dtype=dtype)
     if FLAGS.checkpoint != "":
         ckpt = FLAGS.checkpoint
@@ -109,7 +109,8 @@ def train():
         # Create model.
         logging.info("Creating %d layers of %d units." %
                      (FLAGS.num_layers, FLAGS.size))
-        model = create_model(sess, False, False)
+        train_writer = tf.summary.FileWriter(FLAGS.tfboard, sess.graph)
+        model = create_model(sess, False)
 
         # Read data into buckets and compute their sizes.
         logging.info("Create buckets.")
@@ -141,7 +142,7 @@ def train():
                 model.get_batch(train_set, bucket_id)
             step_loss, _ = model.step(
                 sess, encoder_inputs, decoder_inputs,
-                encoder_len, decoder_len, False)
+                encoder_len, decoder_len, False, train_writer)
 
             step_time += (time.time() - start_time) / \
                 FLAGS.steps_per_validation
@@ -194,7 +195,7 @@ def decode():
         # Create model and load parameters.
         logging.info("Creating %d layers of %d units." %
                      (FLAGS.num_layers, FLAGS.size))
-        model = create_model(sess, True, True)
+        model = create_model(sess, True)
 
         result = []
         for idx, token_ids in enumerate(data):
