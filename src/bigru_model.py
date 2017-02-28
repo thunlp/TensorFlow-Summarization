@@ -153,9 +153,14 @@ class BiGRUModel(object):
              forward_only,
              summary_writer=None):
 
-        #TODO check max encoder_len fits encoder_inputs
-        #TODO check max decoder_len fits decoder_inputs
-        #dim fit is important for sequence_mask
+        # dim fit is important for sequence_mask
+        # TODO better way to use sequence_mask
+        if encoder_inputs.shape[1] != max(encoder_len):
+            raise ValueError("encoder_inputs and encoder_len does not fit")
+        if not forward_only and decoder_inputs.shape[1] != max(decoder_len):
+            raise ValueError("decoder_inputs and decoder_len does not fit")
+        if decoder_targets.shape[1] = max(decoder_len):
+            raise ValueError("decoder_targets and decoder_len does not fit")
         input_feed = {}
         input_feed[self.encoder_inputs.name] = encoder_inputs
         input_feed[self.decoder_inputs.name] = decoder_inputs[:, :-1]
@@ -172,7 +177,9 @@ class BiGRUModel(object):
             output_feed += [self.summary_merge, self.global_step]
 
         outputs = session.run(output_feed, input_feed)
-        summary_writer.add_summary(outputs[2], outputs[3])
+
+        if summary_writer:
+            summary_writer.add_summary(outputs[2], outputs[3])
         return outputs[:2]
 
 
