@@ -78,7 +78,7 @@ class BiGRUModel(object):
 
                 att_keys, att_values, att_scfn, att_cofn = \
                     decoder_util.prepare_attention(
-                        att_states, "bahdanau", state_size)
+                        att_states, self.encoder_len, "bahdanau", state_size)
 
                 decoder_emb = tf.get_variable(
                     "embedding", [target_vocab_size, embedding_size],
@@ -151,6 +151,9 @@ class BiGRUModel(object):
              decoder_len,
              forward_only):
 
+        #TODO check max encoder_len fits encoder_inputs
+        #TODO check max decoder_len fits decoder_inputs
+        #dim fit is important for sequence_mask
         input_feed = {}
         input_feed[self.encoder_inputs.name] = encoder_inputs
         input_feed[self.decoder_inputs.name] = decoder_inputs[:, :-1]

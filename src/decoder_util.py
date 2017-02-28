@@ -126,6 +126,7 @@ def attention_decoder_fn_inference(output_fn,
 
 ## Helper functions ##
 def prepare_attention(attention_states,
+                      attention_len,
                       attention_option,
                       num_units,
                       reuse=False):
@@ -137,7 +138,7 @@ def prepare_attention(attention_states,
 
     # Attention score function
     attention_score_fn = _create_attention_score_fn(
-        "attention_score", num_units, attention_option, reuse)
+        "attention_score", attention_len, num_units, attention_option, reuse)
 
     # Attention construction function
     attention_construct_fn = _create_attention_construct_fn(
@@ -192,6 +193,7 @@ def _attn_mul_fun(keys, query):
 
 
 def _create_attention_score_fn(name,
+                               attention_len,
                                num_units,
                                attention_option,
                                reuse,
@@ -226,8 +228,12 @@ def _create_attention_score_fn(name,
             # Compute alignment weights
             #   scores: [batch_size, length]
             #   alignments: [batch_size, length]
-            # TODO(thangluong): not normalize over padding positions.
-            alignments = nn_ops.softmax(scores)
+            score_max = array_ops.reshape(tf.reduce_max(scores, 1), [-1, 1])
+            scores = scores - score_max
+            weights = tf.sequence_mask(attention_len, dtype=tf.float32)
+            scores = tf.exp(scores) * weights
+            score_sum = array_ops.reshape(tf.reduce_sum(scores, 1), [-1, 1])
+            alignments = scores / tf.maximum(score_sum, 1e-8)
 
             # Now calculate the attention-weighted vector.
             alignments = array_ops.expand_dims(alignments, 2)
