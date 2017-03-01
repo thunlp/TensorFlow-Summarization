@@ -157,10 +157,9 @@ class BiGRUModel(object):
         # TODO better way to use sequence_mask
         if encoder_inputs.shape[1] != max(encoder_len):
             raise ValueError("encoder_inputs and encoder_len does not fit")
-        if not forward_only and decoder_inputs.shape[1] != max(decoder_len):
+        if not forward_only and \
+            decoder_inputs.shape[1] != max(decoder_len) + 1:
             raise ValueError("decoder_inputs and decoder_len does not fit")
-        if decoder_targets.shape[1] != max(decoder_len):
-            raise ValueError("decoder_targets and decoder_len does not fit")
         input_feed = {}
         input_feed[self.encoder_inputs.name] = encoder_inputs
         input_feed[self.decoder_inputs.name] = decoder_inputs[:, :-1]
