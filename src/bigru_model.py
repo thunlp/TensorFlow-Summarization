@@ -32,6 +32,7 @@ class BiGRUModel(object):
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.global_step = tf.Variable(0, trainable=False, name="global_step")
+        self.state_size = state_size
 
         self.encoder_inputs = tf.placeholder(
             tf.int32, shape=[self.batch_size, None])
@@ -41,6 +42,11 @@ class BiGRUModel(object):
             tf.int32, shape=[self.batch_size, None])
         self.encoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
         self.decoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
+        self.previous_tok = tf.placeholder(tf.int32, shape=[self.batch_size])
+        self.generate_len = tf.placeholder(tf.int32)
+        # TODO should be [batch * state_size]
+        self.attention_prev = tf.placeholder(
+            tf.float32, shape=[None, state_size])
 
         single_cell = tf.contrib.rnn.GRUCell(state_size)
         if use_lstm:
@@ -69,11 +75,13 @@ class BiGRUModel(object):
             with tf.variable_scope("init_state"):
                 init_state = fc_layer(
                     tf.concat(encoder_states, 1), state_size)
+                self.init_state = init_state
 
             with tf.variable_scope("decoder"):
                 #TODO encoder and decoder state size must fit for attention
                 att_states = fc_layer(
                     tf.concat(encoder_outputs, 2), state_size)
+                self.att_states = att_states
 
                 att_keys, att_values, att_scfn, att_cofn = \
                     decoder_util.prepare_attention(
@@ -132,14 +140,20 @@ class BiGRUModel(object):
                             output_fn,
                             init_state, att_keys, att_values,
                             att_scfn, att_cofn, decoder_emb,
-                            data_util.ID_GO, data_util.ID_EOS,
-                            20, target_vocab_size)  # TODO maxlength 20
+                            self.previous_tok, data_util.ID_EOS,
+                            self.attention_prev,
+                            self.generate_len, target_vocab_size)
 
                     outputs, final_state, final_context_state = \
                         tf.contrib.seq2seq.dynamic_rnn_decoder(
                             cell, decoder_fn, inputs=None,
                             sequence_length=None)
                     self.outputs = outputs
+                    self.outputs_logsoftmax = tf.nn.log_softmax(outputs)
+                    self.final_state = final_state
+                    # final_context_state is used as previous attention
+                    # [batch * state_size]
+                    self.final_context_state = final_context_state
 
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=0)
         self.summary_merge = tf.summary.merge_all()
@@ -168,6 +182,12 @@ class BiGRUModel(object):
         input_feed[self.decoder_len] = decoder_len
 
         if forward_only:
+            st = np.ones([self.batch_size], dtype="int32") * data_util.ID_GO
+            input_feed[self.previous_tok] = st
+            attention_prev = np.zeros(
+                [self.batch_size, self.state_size], dtype="float32")
+            input_feed[self.attention_prev] = attention_prev
+            input_feed[self.generate_len] = 20 #TODO parameter
             output_feed = [self.loss, self.outputs]
         else:
             output_feed = [self.loss, self.updates]
@@ -180,6 +200,83 @@ class BiGRUModel(object):
         if summary_writer:
             summary_writer.add_summary(outputs[2], outputs[3])
         return outputs[:2]
+
+    def step_beam(self,
+                  session,
+                  encoder_inputs,
+                  encoder_len,
+                  max_len=20,
+                  geneos=True):
+
+        beam_size = self.batch_size
+
+        if encoder_inputs.shape[0] == 1:
+            encoder_inputs = np.repeat(encoder_inputs, beam_size, axis=0)
+            encoder_len = np.repeat(encoder_len, beam_size, axis=0)
+
+        if encoder_inputs.shape[1] != max(encoder_len):
+            raise ValueError("encoder_inputs and encoder_len does not fit")
+        #generate attention_states
+        input_feed = {}
+        input_feed[self.encoder_inputs] = encoder_inputs
+        input_feed[self.encoder_len] = encoder_len
+        output_feed = [self.att_states, self.init_state]
+        outputs = session.run(output_feed, input_feed)
+
+        att_states = outputs[0]
+        prev_state = outputs[1]
+        prev_tok = np.ones([beam_size], dtype="int32") * data_util.ID_GO
+
+        input_feed = {}
+        input_feed[self.att_states] = att_states
+        input_feed[self.encoder_len] = encoder_len
+        input_feed[self.generate_len] = 0 #Generate only 1 word
+
+        ret = [[]] * beam_size
+        neos = np.ones([beam_size], dtype="bool")
+
+        score = np.ones([beam_size], dtype="float32") * (-1e8)
+        score[0] = 0
+
+        attention_prev = np.zeros(
+            [self.batch_size, self.state_size], dtype="float32")
+
+        for i in range(max_len):
+            input_feed[self.init_state] = prev_state
+            input_feed[self.previous_tok] = prev_tok
+            input_feed[self.attention_prev] = attention_prev
+            output_feed = [self.final_context_state,
+                           self.outputs_logsoftmax,
+                           self.final_state]
+
+            outputs = session.run(output_feed, input_feed)
+
+            attention_prev = outputs[0]
+            tok_logsoftmax = np.asarray(outputs[1])
+            tok_logsoftmax = tok_logsoftmax.reshape(
+                [beam_size, self.target_vocab_size])
+            # print(tok_logsoftmax, np.argmax(tok_logsoftmax))
+            tok_argsort = np.argsort(tok_logsoftmax, axis=1)[:, -beam_size:]
+            tmp_arg0 = np.arange(beam_size).reshape([beam_size, 1])
+            tok_argsort_score = tok_logsoftmax[tmp_arg0, tok_argsort]
+            tok_argsort_score *= neos.reshape([beam_size, 1])
+            tok_argsort_score += score.reshape([beam_size, 1])
+            all_arg = np.argsort(tok_argsort_score.flatten())[-beam_size:]
+            arg0 = all_arg // beam_size #previous id in batch
+            arg1 = all_arg % beam_size
+            prev_tok = tok_argsort[arg0, arg1] #current word
+            prev_state = outputs[2][arg0]
+            score = tok_argsort_score[arg0, arg1]
+
+            neos = neos[arg0] & (prev_tok != data_util.ID_EOS)
+
+            ret_t = []
+            for j in range(beam_size):
+                ret_t.append(ret[arg0[j]] + [prev_tok[j]])
+
+            ret = ret_t
+        return ret[-1]
+
 
 
     def add_pad(self, data, fixlen):

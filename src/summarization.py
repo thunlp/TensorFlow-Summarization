@@ -183,7 +183,6 @@ def train():
                 sys.stdout.flush()
 
 def decode():
-    assert FLAGS.batch_size == 1
     # Load vocabularies.
     doc_dict = data_util.load_dict(FLAGS.data_dir + "/doc_dict.txt")
     sum_dict = data_util.load_dict(FLAGS.data_dir + "/sum_dict.txt")
@@ -205,11 +204,14 @@ def decode():
                 model.get_batch(
                     {0: [(token_ids, [data_util.ID_GO, data_util.ID_EOS])]}, 0)
 
-            loss, outputs = model.step(sess,
-                encoder_inputs, decoder_inputs,
-                encoder_len, decoder_len, True)
+            if FLAGS.batch_size == 1:
+                loss, outputs = model.step(sess,
+                    encoder_inputs, decoder_inputs,
+                    encoder_len, decoder_len, True)
 
-            outputs = [np.argmax(item) for item in outputs[0]]
+                outputs = [np.argmax(item) for item in outputs[0]]
+            else:
+                outputs = model.step_beam(sess, encoder_inputs, encoder_len)
 
             # If there is an EOS symbol in outputs, cut them at that point.
             if data_util.ID_EOS in outputs:

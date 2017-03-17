@@ -57,6 +57,7 @@ def attention_decoder_fn_inference(output_fn,
                                    embeddings,
                                    start_of_sequence_id,
                                    end_of_sequence_id,
+                                   attention_prev,
                                    maximum_length,
                                    num_decoder_symbols,
                                    dtype=dtypes.int32,
@@ -97,7 +98,7 @@ def attention_decoder_fn_inference(output_fn,
                 cell_input = array_ops.gather(embeddings, next_input_id)
 
                 # init attention
-                attention = _init_attention(encoder_state)
+                attention = attention_prev
             else:
                 # construct attention
                 attention = attention_construct_fn(
@@ -119,7 +120,7 @@ def attention_decoder_fn_inference(output_fn,
                 math_ops.greater(time, maximum_length),
                 lambda: array_ops.ones([batch_size, ], dtype=dtypes.bool),
                 lambda: done)
-            return (done, cell_state, next_input, cell_output, context_state)
+            return (done, cell_state, next_input, cell_output, attention)
 
     return decoder_fn
 
