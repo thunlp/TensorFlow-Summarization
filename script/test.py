@@ -58,7 +58,7 @@ if __name__ == "__main__":
                         "--test_file", data_pattern.format(dataset),
                         "--batch_size", str(beam_search),
                         "--test_output", output_file,
-                        "--geneos", tag,
+                        "--geneos", str(tag),
                         "--checkpoint", ckpt]
                 for k, v in test_params.items():
                     proc.append(k)
