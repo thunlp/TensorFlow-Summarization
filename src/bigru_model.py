@@ -255,7 +255,9 @@ class BiGRUModel(object):
             tok_logsoftmax = np.asarray(outputs[1])
             tok_logsoftmax = tok_logsoftmax.reshape(
                 [beam_size, self.target_vocab_size])
-            # print(tok_logsoftmax, np.argmax(tok_logsoftmax))
+            if not geneos:
+                tok_logsoftmax[:, data_util.ID_EOS] = -1e8
+
             tok_argsort = np.argsort(tok_logsoftmax, axis=1)[:, -beam_size:]
             tmp_arg0 = np.arange(beam_size).reshape([beam_size, 1])
             tok_argsort_score = tok_logsoftmax[tmp_arg0, tok_argsort]

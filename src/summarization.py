@@ -22,6 +22,7 @@ tf.app.flags.DEFINE_string("train_dir", "model", "Training directory.")
 tf.app.flags.DEFINE_string("tfboard", "tfboard", "Tensorboard log directory.")
 tf.app.flags.DEFINE_boolean("decode", False, "Set to True for testing.")
 tf.app.flags.DEFINE_boolean("fast_decode", False, "Use feed_previous. ")
+tf.app.flags.DEFINE_boolean("geneos", True, "Do not generate EOS. ")
 tf.app.flags.DEFINE_float(
     "max_gradient", 1.0, "Clip gradients l2 norm to this range.")
 tf.app.flags.DEFINE_integer(
@@ -204,14 +205,15 @@ def decode():
                 model.get_batch(
                     {0: [(token_ids, [data_util.ID_GO, data_util.ID_EOS])]}, 0)
 
-            if FLAGS.batch_size == 1:
+            if FLAGS.batch_size == 1 and FLAGS.geneos:
                 loss, outputs = model.step(sess,
                     encoder_inputs, decoder_inputs,
                     encoder_len, decoder_len, True)
 
                 outputs = [np.argmax(item) for item in outputs[0]]
             else:
-                outputs = model.step_beam(sess, encoder_inputs, encoder_len)
+                outputs = model.step_beam(
+                    sess, encoder_inputs, encoder_len, FLAGS.geneos)
 
             # If there is an EOS symbol in outputs, cut them at that point.
             if data_util.ID_EOS in outputs:
