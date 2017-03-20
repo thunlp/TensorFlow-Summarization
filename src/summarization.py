@@ -213,7 +213,7 @@ def decode():
                 outputs = [np.argmax(item) for item in outputs[0]]
             else:
                 outputs = model.step_beam(
-                    sess, encoder_inputs, encoder_len, FLAGS.geneos)
+                    sess, encoder_inputs, encoder_len, geneos=FLAGS.geneos)
 
             # If there is an EOS symbol in outputs, cut them at that point.
             if data_util.ID_EOS in outputs:
