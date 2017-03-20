@@ -115,8 +115,8 @@ class BiGRUModel(object):
                     loss_t = tf.contrib.seq2seq.sequence_loss(
                         outputs_logits, self.decoder_targets, weights,
                         average_across_timesteps=False,
-                        average_across_batch=True)
-                    self.loss = tf.reduce_sum(loss_t)
+                        average_across_batch=False)
+                    self.loss = tf.reduce_sum(loss_t) / self.batch_size
 
                     params = tf.trainable_variables()
                     opt = tf.train.AdadeltaOptimizer(
@@ -205,7 +205,7 @@ class BiGRUModel(object):
                   session,
                   encoder_inputs,
                   encoder_len,
-                  max_len=20,
+                  max_len=12,
                   geneos=True):
 
         beam_size = self.batch_size
