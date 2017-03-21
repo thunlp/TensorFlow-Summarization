@@ -29,6 +29,20 @@ For simplicity and flexibility, we implement the beam search algorithm in python
 Check `step_beam(...)` in `bigru_model.py` for details.
 
 ## Results
+We train the model for 300k batches with batch size 80. We clip all summaries to 75 bytes. For DUC datasets, we eliminate EOS and generate 12 words. For GIGA dataset, we let the model to generate EOS. 
+
+### Negative Log Likelihood of Sentence
+![](misc/loss.png)
+
+### Rouge Evaluation
+|Dataset|Beam Size|R1-R|R1-P|R1-F|R2-R|R2-P|R2-F|RL-R|RL-P|RL-F|
+|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+duc2003 | 1 | 0.25758 | 0.23003 | 0.24235 | 0.07511 | 0.06611 | 0.07009 | 0.22608 | 0.20174 | 0.21262
+duc2003 | 10 | 0.27312 | 0.23864 | 0.25416 | 0.08977 | 0.07732 | 0.08286 | 0.24129 | 0.21074 | 0.22449
+duc2004 | 1 | 0.27584 | 0.25971 | 0.26673 | 0.08328 | 0.07832 | 0.08046 | 0.24253 | 0.22853 | 0.23461
+duc2004 | 10 | 0.28024 | 0.25987 | 0.26889 | 0.09377 | 0.08631 | 0.08959 | 0.24849 | 0.23048 | 0.23844
+giga | 1 | 0.3185 | 0.38779 | 0.3391 | 0.14542 | 0.17537 | 0.15393 | 0.29925 | 0.363 | 0.3181
+giga | 10 | 0.30179 | 0.41224 | 0.33635 | 0.14378 | 0.1951 | 0.15936 | 0.28447 | 0.38733 | 0.31664
 
 
 ## Requirement
