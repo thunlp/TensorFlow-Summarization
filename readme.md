@@ -18,6 +18,11 @@ For advanced users, ```python3 src/summarization.py -h``` can print help. Please
 
 ## Implementation Details
 
+### Bucketing
+In tensorflow r0.11 and earlier, using bucketing is recommended. r1.0 provides dynamic rnn seq2seq framework which is much easier to understand than the tricky bucketing mechanism. 
+
+We use dynamic rnn to generate compute graph. There is only one computing graph in our implemention. However, we still split the dataset into several buckets and use data from the same bucket to create a batch. By doing so, we can add less padding, leading to a better efficiency. 
+
 ### Attention Mechanism
 The attention mechanism follows [Bahdanau et. al](https://arxiv.org/abs/1409.0473).
 
