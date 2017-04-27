@@ -1,5 +1,9 @@
 # Tensorflow Seq2seq Text Summarization
 
+**This branch is compatable with tensorflow r1.0**
+
+---
+
 This is an implementation of sequence-to-sequence model using a bidirectional GRU encoder and a GRU decoder. This project aims to help people start working on **Abstractive Short Text Summarization** immediately. And hopefully, it may also work on machine translation tasks. 
 
 ## Dataset
