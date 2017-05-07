@@ -21,7 +21,6 @@ tf.app.flags.DEFINE_string("test_output", "output.txt", "Test output.")
 tf.app.flags.DEFINE_string("train_dir", "model", "Training directory.")
 tf.app.flags.DEFINE_string("tfboard", "tfboard", "Tensorboard log directory.")
 tf.app.flags.DEFINE_boolean("decode", False, "Set to True for testing.")
-tf.app.flags.DEFINE_boolean("fast_decode", False, "Use feed_previous. ")
 tf.app.flags.DEFINE_boolean("geneos", True, "Do not generate EOS. ")
 tf.app.flags.DEFINE_float(
     "max_gradient", 1.0, "Clip gradients l2 norm to this range.")
@@ -72,7 +71,6 @@ def create_model(session, forward_only):
         FLAGS.max_gradient,
         FLAGS.batch_size,
         FLAGS.learning_rate,
-        num_samples=0,
         forward_only=forward_only,
         dtype=dtype)
     if FLAGS.checkpoint != "":

@@ -21,7 +21,7 @@ def load_dict(dict_path, max_vocab=None):
         dict_file.close()
     except:
         logging.info(
-            "Load dict {dict} filed, create later.".format(dict=dict_path))
+            "Load dict {dict} failed, create later.".format(dict=dict_path))
         return None
 
     dict_data = list(map(lambda x: x.split(), dict_data))
@@ -44,7 +44,7 @@ def create_dict(dict_path, corpus, max_vocab=None):
             except:
                 counter[word] = 1
 
-    for mark_t in MARK_EOS:
+    for mark_t in MARKS:
         if mark_t in counter:
             del counter[mark_t]
             logging.warning("{} appears in corpus.".format(mark_t))
