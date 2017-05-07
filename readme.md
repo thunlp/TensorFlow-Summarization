@@ -1,4 +1,8 @@
-# Bi-GRU Seq2seq Text Summarization
+# Tensorflow Seq2seq Text Summarization
+
+**This branch uses new tf.contrib.seq2seq APIs in tensorflow r1.1. For r1.0 users, please check [Branch tf1.0](https://github.com/thunlp/TensorFlow-Summarization/tree/tf1.0)**
+
+---
 
 This is an implementation of sequence-to-sequence model using a bidirectional GRU encoder and a GRU decoder. This project aims to help people start working on **Abstractive Short Text Summarization** immediately. And hopefully, it may also work on machine translation tasks. 
 
@@ -52,7 +56,7 @@ giga | 10 | 0.30179 | 0.41224 | 0.33635 | 0.14378 | 0.1951 | 0.15936 | 0.28447 |
 
 ## Requirement
 * Python3
-* Tensorflow r1.0
+* Tensorflow r1.1
 
 ## TODO
 * Improve automatic scripts by parameterizing magic numbers. 
