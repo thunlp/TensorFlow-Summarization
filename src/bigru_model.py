@@ -39,6 +39,9 @@ class BiGRUModel(object):
             tf.int32, shape=[self.batch_size, None])
         self.encoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
         self.decoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
+        self.beam_tok = tf.placeholder(tf.int32, shape=[self.batch_size])
+        self.prev_att = tf.placeholder(
+            tf.float32, shape=[self.batch_size, state_size * 2])
 
         encoder_fw_cell = tf.contrib.rnn.GRUCell(state_size)
         encoder_bw_cell = tf.contrib.rnn.GRUCell(state_size)
@@ -84,10 +87,9 @@ class BiGRUModel(object):
                 decoder_cell = tf.contrib.seq2seq.DynamicAttentionWrapper(
                     decoder_cell, attention, state_size * 2)
                 wrapper_state = tf.contrib.seq2seq.DynamicAttentionWrapperState(
-                    self.init_state,
-                    tf.zeros([self.batch_size, state_size*2], dtype=tf.float32))
+                    self.init_state, self.prev_att)
 
-            with tf.variable_scope("decoder"):
+            with tf.variable_scope("decoder") as scope:
 
                 decoder_emb = tf.get_variable(
                     "embedding", [target_vocab_size, embedding_size],
@@ -151,6 +153,15 @@ class BiGRUModel(object):
 
                     self.outputs = outputs[0]
 
+                    # single step decode for beam search
+                    with tf.variable_scope("decoder", reuse=True):
+                        beam_emb = tf.nn.embedding_lookup(
+                            decoder_emb, self.beam_tok)
+                        self.beam_outputs, self.beam_nxt_state, _, _ = \
+                            decoder.step(0, beam_emb, wrapper_state)
+                        self.beam_logsoftmax = \
+                            tf.nn.log_softmax(self.beam_outputs[0])
+
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=0)
         self.summary_merge = tf.summary.merge_all()
 
@@ -176,6 +187,8 @@ class BiGRUModel(object):
         input_feed[self.decoder_targets] = decoder_inputs[:, 1:]
         input_feed[self.encoder_len] = encoder_len
         input_feed[self.decoder_len] = decoder_len
+        input_feed[self.prev_att] = np.zeros(
+            [self.batch_size, 2 * self.state_size])
 
         if forward_only:
             output_feed = [self.loss, self.outputs]
@@ -216,11 +229,11 @@ class BiGRUModel(object):
         att_states = outputs[0]
         prev_state = outputs[1]
         prev_tok = np.ones([beam_size], dtype="int32") * data_util.ID_GO
+        prev_att = np.zeros([self.batch_size, 2 * self.state_size])
 
         input_feed = {}
         input_feed[self.att_states] = att_states
         input_feed[self.encoder_len] = encoder_len
-        input_feed[self.generate_len] = 0 #Generate only 1 word
 
         ret = [[]] * beam_size
         neos = np.ones([beam_size], dtype="bool")
@@ -228,20 +241,20 @@ class BiGRUModel(object):
         score = np.ones([beam_size], dtype="float32") * (-1e8)
         score[0] = 0
 
-        attention_prev = np.zeros(
-            [self.batch_size, self.state_size], dtype="float32")
+        beam_att = np.zeros(
+            [self.batch_size, self.state_size*2], dtype="float32")
 
         for i in range(max_len):
             input_feed[self.init_state] = prev_state
-            input_feed[self.previous_tok] = prev_tok
-            input_feed[self.attention_prev] = attention_prev
-            output_feed = [self.final_context_state,
-                           self.outputs_logsoftmax,
-                           self.final_state]
+            input_feed[self.beam_tok] = prev_tok
+            input_feed[self.prev_att] = beam_att
+            output_feed = [self.beam_nxt_state[1],
+                           self.beam_logsoftmax,
+                           self.beam_nxt_state[0]]
 
             outputs = session.run(output_feed, input_feed)
 
-            attention_prev = outputs[0]
+            beam_att = outputs[0]
             tok_logsoftmax = np.asarray(outputs[1])
             tok_logsoftmax = tok_logsoftmax.reshape(
                 [beam_size, self.target_vocab_size])
