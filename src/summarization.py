@@ -64,7 +64,6 @@ def create_model(session, forward_only):
     model = bigru_model.BiGRUModel(
         FLAGS.doc_vocab_size,
         FLAGS.sum_vocab_size,
-        _buckets,
         FLAGS.size,
         FLAGS.num_layers,
         FLAGS.embsize,

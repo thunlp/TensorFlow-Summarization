@@ -13,7 +13,6 @@ class BiGRUModel(object):
     def __init__(self,
                  source_vocab_size,
                  target_vocab_size,
-                 buckets,
                  state_size,
                  num_layers,
                  embedding_size,
@@ -25,23 +24,26 @@ class BiGRUModel(object):
 
         self.source_vocab_size = source_vocab_size
         self.target_vocab_size = target_vocab_size
-        self.buckets = buckets
         self.batch_size = batch_size
         self.learning_rate = learning_rate
         self.global_step = tf.Variable(0, trainable=False, name="global_step")
         self.state_size = state_size
 
         self.encoder_inputs = tf.placeholder(
-            tf.int32, shape=[self.batch_size, None])
+            tf.int32, shape=[self.batch_size, None], name="encoder_inputs")
         self.decoder_inputs = tf.placeholder(
-            tf.int32, shape=[self.batch_size, None])
+            tf.int32, shape=[self.batch_size, None], name="decoder_inputs")
         self.decoder_targets = tf.placeholder(
-            tf.int32, shape=[self.batch_size, None])
-        self.encoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
-        self.decoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
-        self.beam_tok = tf.placeholder(tf.int32, shape=[self.batch_size])
+            tf.int32, shape=[self.batch_size, None], name="decoder_targets")
+        self.encoder_len = tf.placeholder(
+            tf.int32, shape=[self.batch_size], name="encoder_len")
+        self.decoder_len = tf.placeholder(
+            tf.int32, shape=[self.batch_size], name="decoder_len")
+        self.beam_tok = tf.placeholder(
+            tf.int32, shape=[self.batch_size], name="beam_tok")
         self.prev_att = tf.placeholder(
-            tf.float32, shape=[self.batch_size, state_size * 2])
+            tf.float32, shape=[self.batch_size, state_size * 2],
+            name="prev_att")
 
         encoder_fw_cell = tf.contrib.rnn.GRUCell(state_size)
         encoder_bw_cell = tf.contrib.rnn.GRUCell(state_size)
@@ -135,9 +137,6 @@ class BiGRUModel(object):
                     tf.summary.scalar('loss', self.loss)
                 else:
                     self.loss = tf.constant(0)
-                    with tf.variable_scope("proj") as scope:
-                        output_fn = lambda x: fc_layer(
-                            x, target_vocab_size, scope=scope)
 
                     st_toks = tf.convert_to_tensor(
                         [data_util.ID_GO]*batch_size, dtype=tf.int32)
@@ -154,6 +153,7 @@ class BiGRUModel(object):
                     self.outputs = outputs[0]
 
                     # single step decode for beam search
+                    # fake variable scope "decoder" to simulate dynamic_decode
                     with tf.variable_scope("decoder", reuse=True):
                         beam_emb = tf.nn.embedding_lookup(
                             decoder_emb, self.beam_tok)
@@ -208,7 +208,7 @@ class BiGRUModel(object):
                   session,
                   encoder_inputs,
                   encoder_len,
-                  max_len=12,
+                  max_len=10,
                   geneos=True):
 
         beam_size = self.batch_size
