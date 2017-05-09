@@ -75,7 +75,7 @@ class BiGRUModel(object):
 
             with tf.variable_scope("init_state"):
                 init_state = fc_layer(
-                    tf.concat(encoder_states, 1), state_size)
+                    tf.concat(encoder_states, 1), state_size, activation=None)
                 # the shape of bidirectional_dynamic_rnn is weird
                 # None for batch_size
                 self.init_state = init_state
