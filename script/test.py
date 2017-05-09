@@ -12,7 +12,7 @@ MAX_KEEP = 1
 
 datasets = ["giga", "duc2003", "duc2004"]
 geneos = [True, False, False]
-beam_searchs = [1]
+beam_searchs = [1, 10]
 
 test_params = {
     "--decode": True,
@@ -49,8 +49,10 @@ if __name__ == "__main__":
         logging.info("Test {}. ".format(ckpt))
         for dataset, tag in zip(datasets, geneos):
             for beam_search in beam_searchs:
-                logging.info("Test {} with beam_size = {}".format(data_pattern.format(dataset), beam_search))
-                output_file = OUTPUT_PATTERN.format(dataset=dataset, description=str(beam_search)+"_"+str(model[1]))
+                logging.info("Test {} with beam_size = {}".format(
+                    data_pattern.format(dataset), beam_search))
+                output_file = OUTPUT_PATTERN.format(dataset=dataset,
+                    description=str(beam_search)+"_"+str(model[1]))
                 if os.path.exists(output_file):
                     logging.info("{} exists, skip testing".format(output_file))
                     continue
