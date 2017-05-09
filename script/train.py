@@ -28,9 +28,11 @@ if __name__ == "__main__":
     while global_step < MAX_STEPS:
         terminate_step = max(global_step + STEPS_PER_CHECKPOINT, TEST_THRESHOLD)
 
-        logging.info("Train from {} to {}. ".format(global_step, terminate_step))
+        logging.info("Train from {} to {}. ".format(
+            global_step, terminate_step))
 
-        proc = ["python3", "src/summarization.py", "--max_iter", str(terminate_step)]
+        proc = ["python3", "src/summarization.py",
+            "--max_iter", str(terminate_step)]
         for key, val in train_params.items():
             proc.append(key)
             proc.append(str(val))

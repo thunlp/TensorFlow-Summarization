@@ -4,7 +4,6 @@ import numpy as np
 import tensorflow as tf
 
 import data_util
-import decoder_util
 
 emb_init = tf.truncated_normal_initializer(mean=0.0, stddev=0.01)
 fc_layer = tf.contrib.layers.fully_connected
@@ -21,8 +20,6 @@ class BiGRUModel(object):
                  max_gradient,
                  batch_size,
                  learning_rate,
-                 use_lstm=False,
-                 num_samples=10000,
                  forward_only=False,
                  dtype=tf.float32):
 
@@ -42,20 +39,22 @@ class BiGRUModel(object):
             tf.int32, shape=[self.batch_size, None])
         self.encoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
         self.decoder_len = tf.placeholder(tf.int32, shape=[self.batch_size])
-        self.previous_tok = tf.placeholder(tf.int32, shape=[self.batch_size])
-        self.generate_len = tf.placeholder(tf.int32)
-        # TODO should be [batch * state_size]
-        self.attention_prev = tf.placeholder(
-            tf.float32, shape=[None, state_size])
+        self.beam_tok = tf.placeholder(tf.int32, shape=[self.batch_size])
+        self.prev_att = tf.placeholder(
+            tf.float32, shape=[self.batch_size, state_size * 2])
 
-        single_cell = tf.contrib.rnn.GRUCell(state_size)
-        if use_lstm:
-            single_cell = tf.contrib.rnn.BasicLSTMCell(state_size)
-        cell = single_cell
-        if num_layers > 1:
-            cell = tf.contrib.rnn.MultiRNNCell([single_cell] * num_layers)
+        encoder_fw_cell = tf.contrib.rnn.GRUCell(state_size)
+        encoder_bw_cell = tf.contrib.rnn.GRUCell(state_size)
+        decoder_cell = tf.contrib.rnn.GRUCell(state_size)
+
         if not forward_only:
-            cell = tf.contrib.rnn.DropoutWrapper(cell, output_keep_prob=0.50)
+            encoder_fw_cell = tf.contrib.rnn.DropoutWrapper(
+                encoder_fw_cell, output_keep_prob=0.50)
+            encoder_bw_cell = tf.contrib.rnn.DropoutWrapper(
+                encoder_bw_cell, output_keep_prob=0.50)
+            decoder_cell = tf.contrib.rnn.DropoutWrapper(
+                decoder_cell, output_keep_prob=0.50)
+
 
         with tf.variable_scope("seq2seq", dtype=dtype):
             with tf.variable_scope("encoder"):
@@ -69,44 +68,49 @@ class BiGRUModel(object):
 
                 encoder_outputs, encoder_states = \
                     tf.nn.bidirectional_dynamic_rnn(
-                        cell, cell, encoder_inputs_emb,
+                        encoder_fw_cell, encoder_bw_cell, encoder_inputs_emb,
                         sequence_length=self.encoder_len, dtype=dtype)
 
             with tf.variable_scope("init_state"):
                 init_state = fc_layer(
                     tf.concat(encoder_states, 1), state_size)
+                # the shape of bidirectional_dynamic_rnn is weird
+                # None for batch_size
                 self.init_state = init_state
+                self.init_state.set_shape([self.batch_size, state_size])
+                self.att_states = tf.concat(encoder_outputs, 2)
+                self.att_states.set_shape([self.batch_size, None, state_size*2])
 
-            with tf.variable_scope("decoder"):
-                #TODO encoder and decoder state size must fit for attention
-                att_states = fc_layer(
-                    tf.concat(encoder_outputs, 2), state_size)
-                self.att_states = att_states
+            with tf.variable_scope("attention"):
+                attention = tf.contrib.seq2seq.BahdanauAttention(
+                    state_size, self.att_states, self.encoder_len)
+                decoder_cell = tf.contrib.seq2seq.DynamicAttentionWrapper(
+                    decoder_cell, attention, state_size * 2)
+                wrapper_state = tf.contrib.seq2seq.DynamicAttentionWrapperState(
+                    self.init_state, self.prev_att)
 
-                att_keys, att_values, att_scfn, att_cofn = \
-                    decoder_util.prepare_attention(
-                        att_states, self.encoder_len, "bahdanau", state_size)
+            with tf.variable_scope("decoder") as scope:
 
                 decoder_emb = tf.get_variable(
                     "embedding", [target_vocab_size, embedding_size],
                     initializer=emb_init)
 
-                if not forward_only:
-                    decoder_fn = decoder_util.attention_decoder_fn_train(
-                        init_state, att_keys, att_values, att_scfn, att_cofn)
+                decoder_cell = tf.contrib.rnn.OutputProjectionWrapper(
+                    decoder_cell, target_vocab_size)
 
+                if not forward_only:
                     decoder_inputs_emb = tf.nn.embedding_lookup(
                         decoder_emb, self.decoder_inputs)
 
-                    outputs, final_state, final_context_state = \
-                        tf.contrib.seq2seq.dynamic_rnn_decoder(
-                            cell, decoder_fn, inputs=decoder_inputs_emb,
-                            sequence_length=self.decoder_len)
+                    helper = tf.contrib.seq2seq.TrainingHelper(
+                        decoder_inputs_emb, self.decoder_len)
+                    decoder = tf.contrib.seq2seq.BasicDecoder(
+                        decoder_cell, helper, wrapper_state)
 
-                    with tf.variable_scope("proj") as scope:
-                        outputs_logits = fc_layer(
-                            outputs, target_vocab_size, scope=scope)
+                    outputs, final_state = \
+                        tf.contrib.seq2seq.dynamic_decode(decoder)
 
+                    outputs_logits = outputs[0]
                     self.outputs = outputs_logits
 
                     weights = tf.sequence_mask(
@@ -135,25 +139,28 @@ class BiGRUModel(object):
                         output_fn = lambda x: fc_layer(
                             x, target_vocab_size, scope=scope)
 
-                    decoder_fn = \
-                        decoder_util.attention_decoder_fn_inference(
-                            output_fn,
-                            init_state, att_keys, att_values,
-                            att_scfn, att_cofn, decoder_emb,
-                            self.previous_tok, data_util.ID_EOS,
-                            self.attention_prev,
-                            self.generate_len, target_vocab_size)
+                    st_toks = tf.convert_to_tensor(
+                        [data_util.ID_GO]*batch_size, dtype=tf.int32)
 
-                    outputs, final_state, final_context_state = \
-                        tf.contrib.seq2seq.dynamic_rnn_decoder(
-                            cell, decoder_fn, inputs=None,
-                            sequence_length=None)
-                    self.outputs = outputs
-                    self.outputs_logsoftmax = tf.nn.log_softmax(outputs)
-                    self.final_state = final_state
-                    # final_context_state is used as previous attention
-                    # [batch * state_size]
-                    self.final_context_state = final_context_state
+                    helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(
+                        decoder_emb, st_toks, data_util.ID_EOS)
+
+                    decoder = tf.contrib.seq2seq.BasicDecoder(
+                        decoder_cell, helper, wrapper_state)
+
+                    outputs, final_state = \
+                        tf.contrib.seq2seq.dynamic_decode(decoder)
+
+                    self.outputs = outputs[0]
+
+                    # single step decode for beam search
+                    with tf.variable_scope("decoder", reuse=True):
+                        beam_emb = tf.nn.embedding_lookup(
+                            decoder_emb, self.beam_tok)
+                        self.beam_outputs, self.beam_nxt_state, _, _ = \
+                            decoder.step(0, beam_emb, wrapper_state)
+                        self.beam_logsoftmax = \
+                            tf.nn.log_softmax(self.beam_outputs[0])
 
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=0)
         self.summary_merge = tf.summary.merge_all()
@@ -175,19 +182,15 @@ class BiGRUModel(object):
             decoder_inputs.shape[1] != max(decoder_len) + 1:
             raise ValueError("decoder_inputs and decoder_len does not fit")
         input_feed = {}
-        input_feed[self.encoder_inputs.name] = encoder_inputs
-        input_feed[self.decoder_inputs.name] = decoder_inputs[:, :-1]
-        input_feed[self.decoder_targets.name] = decoder_inputs[:, 1:]
+        input_feed[self.encoder_inputs] = encoder_inputs
+        input_feed[self.decoder_inputs] = decoder_inputs[:, :-1]
+        input_feed[self.decoder_targets] = decoder_inputs[:, 1:]
         input_feed[self.encoder_len] = encoder_len
         input_feed[self.decoder_len] = decoder_len
+        input_feed[self.prev_att] = np.zeros(
+            [self.batch_size, 2 * self.state_size])
 
         if forward_only:
-            st = np.ones([self.batch_size], dtype="int32") * data_util.ID_GO
-            input_feed[self.previous_tok] = st
-            attention_prev = np.zeros(
-                [self.batch_size, self.state_size], dtype="float32")
-            input_feed[self.attention_prev] = attention_prev
-            input_feed[self.generate_len] = 20 #TODO parameter
             output_feed = [self.loss, self.outputs]
         else:
             output_feed = [self.loss, self.updates]
@@ -226,11 +229,11 @@ class BiGRUModel(object):
         att_states = outputs[0]
         prev_state = outputs[1]
         prev_tok = np.ones([beam_size], dtype="int32") * data_util.ID_GO
+        prev_att = np.zeros([self.batch_size, 2 * self.state_size])
 
         input_feed = {}
         input_feed[self.att_states] = att_states
         input_feed[self.encoder_len] = encoder_len
-        input_feed[self.generate_len] = 0 #Generate only 1 word
 
         ret = [[]] * beam_size
         neos = np.ones([beam_size], dtype="bool")
@@ -238,20 +241,20 @@ class BiGRUModel(object):
         score = np.ones([beam_size], dtype="float32") * (-1e8)
         score[0] = 0
 
-        attention_prev = np.zeros(
-            [self.batch_size, self.state_size], dtype="float32")
+        beam_att = np.zeros(
+            [self.batch_size, self.state_size*2], dtype="float32")
 
         for i in range(max_len):
             input_feed[self.init_state] = prev_state
-            input_feed[self.previous_tok] = prev_tok
-            input_feed[self.attention_prev] = attention_prev
-            output_feed = [self.final_context_state,
-                           self.outputs_logsoftmax,
-                           self.final_state]
+            input_feed[self.beam_tok] = prev_tok
+            input_feed[self.prev_att] = beam_att
+            output_feed = [self.beam_nxt_state[1],
+                           self.beam_logsoftmax,
+                           self.beam_nxt_state[0]]
 
             outputs = session.run(output_feed, input_feed)
 
-            attention_prev = outputs[0]
+            beam_att = outputs[0]
             tok_logsoftmax = np.asarray(outputs[1])
             tok_logsoftmax = tok_logsoftmax.reshape(
                 [beam_size, self.target_vocab_size])
