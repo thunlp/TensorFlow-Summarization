@@ -147,7 +147,7 @@ def train():
             start_time = time.time()
             encoder_inputs, decoder_inputs, encoder_len, decoder_len = \
                 model.get_batch(train_set, bucket_id)
-            step_loss, _ = model.step(
+            step_loss = model.step(
                 sess, encoder_inputs, decoder_inputs,
                 encoder_len, decoder_len, False, train_writer)
 
@@ -179,7 +179,7 @@ def train():
                         continue
                     encoder_inputs, decoder_inputs, encoder_len, decoder_len =\
                         model.get_batch(dev_set, bucket_id)
-                    eval_loss, _ = model.step(sess, encoder_inputs,
+                    eval_loss = model.step(sess, encoder_inputs,
                                             decoder_inputs, encoder_len,
                                             decoder_len, True)
                     eval_loss = eval_loss * FLAGS.batch_size \

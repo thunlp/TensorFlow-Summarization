@@ -258,7 +258,7 @@ class BiGRUModel(object):
             [self.batch_size, 2 * self.state_size])
 
         if forward_only:
-            output_feed = [self.loss, self.outputs]
+            output_feed = [self.loss]
         else:
             output_feed = [self.loss, self.updates]
 
@@ -268,8 +268,8 @@ class BiGRUModel(object):
         outputs = session.run(output_feed, input_feed)
 
         if summary_writer:
-            summary_writer.add_summary(outputs[2], outputs[3])
-        return outputs[:2]
+            summary_writer.add_summary(outputs[-2], outputs[-1])
+        return outputs[0]
 
     def step_beam(self,
                   session,
