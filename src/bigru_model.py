@@ -8,6 +8,104 @@ import data_util
 emb_init = tf.truncated_normal_initializer(mean=0.0, stddev=0.01)
 fc_layer = tf.contrib.layers.fully_connected
 
+def seq2seq(encoder_inputs,
+            encoder_len,
+            decoder_inputs,
+            decoder_len,
+            source_vocab_size,
+            target_vocab_size,
+            prev_att,
+            beam_tok,
+            batch_size, state_size, embedding_size,
+            fw_cell, bw_cell, dc_cell,
+            forward_only,
+            scope, reuse, dtype):
+    with tf.variable_scope(scope or "seq2seq", reuse=reuse):
+        with tf.variable_scope("encoder"):
+
+            encoder_emb = tf.get_variable(
+                "embedding", [source_vocab_size, embedding_size],
+                initializer=emb_init)
+
+            encoder_inputs_emb = tf.nn.embedding_lookup(
+                encoder_emb, encoder_inputs)
+
+            encoder_outputs, encoder_states = \
+                tf.nn.bidirectional_dynamic_rnn(
+                    fw_cell, bw_cell, encoder_inputs_emb,
+                    sequence_length=encoder_len, dtype=dtype)
+
+        with tf.variable_scope("init_state"):
+            init_state = fc_layer(
+                tf.concat(encoder_states, 1), state_size,
+                activation_fn=None)
+            # the shape of bidirectional_dynamic_rnn is weird
+            # None for batch_size
+            init_state.set_shape([batch_size, state_size])
+            att_states = tf.concat(encoder_outputs, 2)
+            att_states.set_shape([batch_size, None, state_size*2])
+
+        with tf.variable_scope("attention"):
+            attention = tf.contrib.seq2seq.BahdanauAttention(
+                state_size, att_states, encoder_len)
+            decoder_cell = tf.contrib.seq2seq.DynamicAttentionWrapper(
+                dc_cell, attention, state_size * 2)
+            wrapper_state = tf.contrib.seq2seq.DynamicAttentionWrapperState(
+                init_state, prev_att)
+
+        with tf.variable_scope("decoder"):
+
+            decoder_emb = tf.get_variable(
+                "embedding", [target_vocab_size, embedding_size],
+                initializer=emb_init)
+
+            decoder_cell = tf.contrib.rnn.OutputProjectionWrapper(
+                decoder_cell, target_vocab_size)
+
+            if not forward_only:
+                decoder_inputs_emb = tf.nn.embedding_lookup(
+                    decoder_emb, decoder_inputs)
+
+                helper = tf.contrib.seq2seq.TrainingHelper(
+                    decoder_inputs_emb, decoder_len)
+                decoder = tf.contrib.seq2seq.BasicDecoder(
+                    decoder_cell, helper, wrapper_state)
+
+                outputs, final_state = \
+                    tf.contrib.seq2seq.dynamic_decode(decoder)
+
+                outputs_logits = outputs[0]
+                return encoder_emb, decoder_emb, outputs_logits
+
+            else:
+                st_toks = tf.convert_to_tensor(
+                    [data_util.ID_GO]*batch_size, dtype=tf.int32)
+
+                helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(
+                    decoder_emb, st_toks, data_util.ID_EOS)
+
+                decoder = tf.contrib.seq2seq.BasicDecoder(
+                    decoder_cell, helper, wrapper_state)
+
+                # outputs, final_state = \
+                #     tf.contrib.seq2seq.dynamic_decode(decoder)
+                #
+                # self.outputs = outputs[0]
+
+                # single step decode for beam search
+                # fake variable scope "decoder" to simulate dynamic_decode
+                with tf.variable_scope("decoder"):
+                    beam_emb = tf.nn.embedding_lookup(
+                        decoder_emb, beam_tok)
+                    beam_outputs, beam_nxt_state, _, _ = \
+                        decoder.step(0, beam_emb, wrapper_state)
+                    beam_logsoftmax = \
+                        tf.nn.log_softmax(beam_outputs[0])
+                return init_state, att_states, \
+                    beam_logsoftmax, beam_nxt_state
+
+
+
 class BiGRUModel(object):
 
     def __init__(self,
@@ -61,111 +159,36 @@ class BiGRUModel(object):
             decoder_cell = tf.contrib.rnn.DropoutWrapper(
                 decoder_cell, output_keep_prob=0.50)
 
+        if not forward_only:
+            weights = tf.sequence_mask(
+                self.decoder_len, dtype=tf.float32)
 
-        with tf.variable_scope("seq2seq", dtype=dtype):
-            with tf.variable_scope("encoder"):
+            encoder_emb, decoder_emb, outputs_logits = \
+                seq2seq(self.encoder_inputs, self.encoder_len,
+                self.decoder_inputs, self.decoder_len,
+                source_vocab_size, target_vocab_size,
+                self.prev_att, self.beam_tok,
+                batch_size, state_size, embedding_size,
+                encoder_fw_cell, encoder_bw_cell, decoder_cell,
+                forward_only=False, scope='seq2seq', reuse=False, dtype=dtype)
 
-                encoder_emb = tf.get_variable(
-                    "embedding", [source_vocab_size, embedding_size],
-                    initializer=emb_init)
+            loss_t = tf.contrib.seq2seq.sequence_loss(
+                outputs_logits, self.decoder_targets, weights,
+                average_across_timesteps=False,
+                average_across_batch=False)
+            self.loss = tf.reduce_sum(loss_t) / self.batch_size
 
-                encoder_inputs_emb = tf.nn.embedding_lookup(
-                    encoder_emb, self.encoder_inputs)
+            params = tf.trainable_variables()
+            opt = tf.train.AdadeltaOptimizer(
+                self.learning_rate, epsilon=1e-6)
+            gradients = tf.gradients(self.loss, params)
+            clipped_gradients, norm = \
+                tf.clip_by_global_norm(gradients, max_gradient)
+            self.updates = opt.apply_gradients(
+                zip(clipped_gradients, params),
+                global_step=self.global_step)
 
-                encoder_outputs, encoder_states = \
-                    tf.nn.bidirectional_dynamic_rnn(
-                        encoder_fw_cell, encoder_bw_cell, encoder_inputs_emb,
-                        sequence_length=self.encoder_len, dtype=dtype)
-
-            with tf.variable_scope("init_state"):
-                init_state = fc_layer(
-                    tf.concat(encoder_states, 1), state_size,
-                    activation_fn=None)
-                # the shape of bidirectional_dynamic_rnn is weird
-                # None for batch_size
-                self.init_state = init_state
-                self.init_state.set_shape([self.batch_size, state_size])
-                self.att_states = tf.concat(encoder_outputs, 2)
-                self.att_states.set_shape([self.batch_size, None, state_size*2])
-
-            with tf.variable_scope("attention"):
-                attention = tf.contrib.seq2seq.BahdanauAttention(
-                    state_size, self.att_states, self.encoder_len)
-                decoder_cell = tf.contrib.seq2seq.DynamicAttentionWrapper(
-                    decoder_cell, attention, state_size * 2)
-                wrapper_state = tf.contrib.seq2seq.DynamicAttentionWrapperState(
-                    self.init_state, self.prev_att)
-
-            with tf.variable_scope("decoder") as scope:
-
-                decoder_emb = tf.get_variable(
-                    "embedding", [target_vocab_size, embedding_size],
-                    initializer=emb_init)
-
-                decoder_cell = tf.contrib.rnn.OutputProjectionWrapper(
-                    decoder_cell, target_vocab_size)
-
-                if not forward_only:
-                    decoder_inputs_emb = tf.nn.embedding_lookup(
-                        decoder_emb, self.decoder_inputs)
-
-                    helper = tf.contrib.seq2seq.TrainingHelper(
-                        decoder_inputs_emb, self.decoder_len)
-                    decoder = tf.contrib.seq2seq.BasicDecoder(
-                        decoder_cell, helper, wrapper_state)
-
-                    outputs, final_state = \
-                        tf.contrib.seq2seq.dynamic_decode(decoder)
-
-                    outputs_logits = outputs[0]
-                    self.outputs = outputs_logits
-
-                    weights = tf.sequence_mask(
-                        self.decoder_len, dtype=tf.float32)
-
-                    loss_t = tf.contrib.seq2seq.sequence_loss(
-                        outputs_logits, self.decoder_targets, weights,
-                        average_across_timesteps=False,
-                        average_across_batch=False)
-                    self.loss = tf.reduce_sum(loss_t) / self.batch_size
-
-                    params = tf.trainable_variables()
-                    opt = tf.train.AdadeltaOptimizer(
-                        self.learning_rate, epsilon=1e-6)
-                    gradients = tf.gradients(self.loss, params)
-                    clipped_gradients, norm = \
-                        tf.clip_by_global_norm(gradients, max_gradient)
-                    self.updates = opt.apply_gradients(
-                        zip(clipped_gradients, params),
-                        global_step=self.global_step)
-
-                    tf.summary.scalar('loss', self.loss)
-                else:
-                    self.loss = tf.constant(0)
-
-                    st_toks = tf.convert_to_tensor(
-                        [data_util.ID_GO]*batch_size, dtype=tf.int32)
-
-                    helper = tf.contrib.seq2seq.GreedyEmbeddingHelper(
-                        decoder_emb, st_toks, data_util.ID_EOS)
-
-                    decoder = tf.contrib.seq2seq.BasicDecoder(
-                        decoder_cell, helper, wrapper_state)
-
-                    outputs, final_state = \
-                        tf.contrib.seq2seq.dynamic_decode(decoder)
-
-                    self.outputs = outputs[0]
-
-                    # single step decode for beam search
-                    # fake variable scope "decoder" to simulate dynamic_decode
-                    with tf.variable_scope("decoder", reuse=True):
-                        beam_emb = tf.nn.embedding_lookup(
-                            decoder_emb, self.beam_tok)
-                        self.beam_outputs, self.beam_nxt_state, _, _ = \
-                            decoder.step(0, beam_emb, wrapper_state)
-                        self.beam_logsoftmax = \
-                            tf.nn.log_softmax(self.beam_outputs[0])
+            tf.summary.scalar('loss', self.loss)
 
             def normalize_embedding(emb, freq):
                 e = tf.reduce_sum(tf.reshape(freq, [-1, 1]) * emb, axis=0)
@@ -177,6 +200,18 @@ class BiGRUModel(object):
                 encoder_emb, self.source_vocab_freq)
             self.update_dec_emb = normalize_embedding(
                 decoder_emb, self.target_vocab_freq)
+        else:
+            self.loss = tf.constant(0)
+            self.init_state, self.att_states, \
+                self.beam_logsoftmax, self.beam_nxt_state = \
+                seq2seq(self.encoder_inputs, self.encoder_len,
+                self.decoder_inputs, self.decoder_len,
+                source_vocab_size, target_vocab_size,
+                self.prev_att, self.beam_tok,
+                batch_size, state_size, embedding_size,
+                encoder_fw_cell, encoder_bw_cell, decoder_cell,
+                forward_only=True, scope='seq2seq', reuse=False, dtype=dtype)
+
 
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=0)
         self.summary_merge = tf.summary.merge_all()
