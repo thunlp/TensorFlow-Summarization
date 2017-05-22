@@ -86,6 +86,13 @@ def create_model(session, forward_only):
         session.run(tf.global_variables_initializer())
     return model
 
+def count_freq(ids, vocab_size):
+    freq = np.zeros(vocab_size, dtype='float32')
+    for line in ids:
+        for t in line:
+            freq[t] += 1
+    return freq / np.sum(freq)
+
 
 def train():
     logging.info("Preparing summarization data.")
@@ -96,6 +103,8 @@ def train():
             FLAGS.data_dir + "/doc_dict.txt",
             FLAGS.data_dir + "/sum_dict.txt",
             FLAGS.doc_vocab_size, FLAGS.sum_vocab_size)
+    source_vocab_freq = count_freq(docid, FLAGS.doc_vocab_size)
+    target_vocab_freq = count_freq(sumid, FLAGS.sum_vocab_size)
 
     val_docid, val_sumid = \
         data_util.load_valid_data(
@@ -179,6 +188,7 @@ def train():
                     logging.info("  eval: bucket %d ppl %.2f" %
                                  (bucket_id, eval_ppx))
                 sys.stdout.flush()
+                model.norm_emb(sess, source_vocab_freq, target_vocab_freq)
 
 def decode():
     # Load vocabularies.

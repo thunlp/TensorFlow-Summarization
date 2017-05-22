@@ -44,6 +44,10 @@ class BiGRUModel(object):
         self.prev_att = tf.placeholder(
             tf.float32, shape=[self.batch_size, state_size * 2],
             name="prev_att")
+        self.source_vocab_freq = tf.placeholder(
+            tf.float32, shape=[source_vocab_size], name="source_freq")
+        self.target_vocab_freq = tf.placeholder(
+            tf.float32, shape=[target_vocab_size], name="target_freq")
 
         encoder_fw_cell = tf.contrib.rnn.GRUCell(state_size)
         encoder_bw_cell = tf.contrib.rnn.GRUCell(state_size)
@@ -163,8 +167,29 @@ class BiGRUModel(object):
                         self.beam_logsoftmax = \
                             tf.nn.log_softmax(self.beam_outputs[0])
 
+            def normalize_embedding(emb, freq):
+                e = tf.reduce_sum(tf.reshape(freq, [-1, 1]) * emb, axis=0)
+                v = tf.reduce_sum(
+                    tf.reshape(freq, [-1, 1]) * (emb - e) * (emb - e),
+                    axis=0)
+                return tf.assign(emb, (emb - e) / tf.sqrt(v + 1e-6))
+            self.update_enc_emb = normalize_embedding(
+                encoder_emb, self.source_vocab_freq)
+            self.update_dec_emb = normalize_embedding(
+                decoder_emb, self.target_vocab_freq)
+
         self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=0)
         self.summary_merge = tf.summary.merge_all()
+
+    def norm_emb(self,
+                 session,
+                 source_vocab_freq,
+                 target_vocab_freq):
+        input_feed = {}
+        input_feed[self.source_vocab_freq] = source_vocab_freq
+        input_feed[self.target_vocab_freq] = target_vocab_freq
+        output_feed = [self.update_dec_emb, self.update_dec_emb]
+        session.run(output_feed, input_feed)
 
     def step(self,
              session,
