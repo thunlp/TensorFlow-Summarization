@@ -12,7 +12,7 @@ MAX_KEEP = 1
 
 datasets = ["giga", "duc2003", "duc2004"]
 geneos = [True, False, False]
-beam_searchs = [1, 10]
+beam_searchs = [10]
 
 test_params = {
     "--decode": True,

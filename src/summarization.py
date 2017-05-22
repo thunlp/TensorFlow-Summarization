@@ -98,8 +98,10 @@ def train():
     logging.info("Preparing summarization data.")
     docid, sumid, doc_dict, sum_dict = \
         data_util.load_data(
-            FLAGS.data_dir + "/train.article.txt",
-            FLAGS.data_dir + "/train.title.txt",
+            # FLAGS.data_dir + "/train.article.txt",
+            # FLAGS.data_dir + "/train.title.txt",
+            FLAGS.data_dir + "/valid.article.filter.txt",
+            FLAGS.data_dir + "/valid.title.filter.txt",
             FLAGS.data_dir + "/doc_dict.txt",
             FLAGS.data_dir + "/sum_dict.txt",
             FLAGS.doc_vocab_size, FLAGS.sum_vocab_size)
@@ -212,15 +214,8 @@ def decode():
                 model.get_batch(
                     {0: [(token_ids, [data_util.ID_GO, data_util.ID_EOS])]}, 0)
 
-            if FLAGS.batch_size == 1 and FLAGS.geneos:
-                loss, outputs = model.step(sess,
-                    encoder_inputs, decoder_inputs,
-                    encoder_len, decoder_len, True)
-
-                outputs = [np.argmax(item) for item in outputs[0]]
-            else:
-                outputs = model.step_beam(
-                    sess, encoder_inputs, encoder_len, geneos=FLAGS.geneos)
+            outputs = model.step_beam(
+                sess, encoder_inputs, encoder_len, geneos=FLAGS.geneos)
 
             # If there is an EOS symbol in outputs, cut them at that point.
             if data_util.ID_EOS in outputs:

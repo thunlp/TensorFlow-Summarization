@@ -8,27 +8,26 @@ import data_util
 emb_init = tf.truncated_normal_initializer(mean=0.0, stddev=0.01)
 fc_layer = tf.contrib.layers.fully_connected
 
-def seq2seq(encoder_inputs,
+def seq2seq(encoder_inputs_emb,
+            decoder_inputs_emb,
             encoder_len,
-            decoder_inputs,
             decoder_len,
-            source_vocab_size,
-            target_vocab_size,
             prev_att,
             beam_tok,
-            batch_size, state_size, embedding_size,
-            fw_cell, bw_cell, dc_cell,
+            decoder_emb,
+            target_vocab_size,
+            batch_size,
+            state_size,
+            embedding_size,
+            fw_cell,
+            bw_cell,
+            dc_cell,
             forward_only,
-            scope, reuse, dtype):
+            scope,
+            reuse,
+            dtype):
     with tf.variable_scope(scope or "seq2seq", reuse=reuse):
         with tf.variable_scope("encoder"):
-
-            encoder_emb = tf.get_variable(
-                "embedding", [source_vocab_size, embedding_size],
-                initializer=emb_init)
-
-            encoder_inputs_emb = tf.nn.embedding_lookup(
-                encoder_emb, encoder_inputs)
 
             encoder_outputs, encoder_states = \
                 tf.nn.bidirectional_dynamic_rnn(
@@ -55,19 +54,13 @@ def seq2seq(encoder_inputs,
 
         with tf.variable_scope("decoder"):
 
-            decoder_emb = tf.get_variable(
-                "embedding", [target_vocab_size, embedding_size],
-                initializer=emb_init)
-
             decoder_cell = tf.contrib.rnn.OutputProjectionWrapper(
                 decoder_cell, target_vocab_size)
 
             if not forward_only:
-                decoder_inputs_emb = tf.nn.embedding_lookup(
-                    decoder_emb, decoder_inputs)
-
                 helper = tf.contrib.seq2seq.TrainingHelper(
                     decoder_inputs_emb, decoder_len)
+
                 decoder = tf.contrib.seq2seq.BasicDecoder(
                     decoder_cell, helper, wrapper_state)
 
@@ -75,7 +68,7 @@ def seq2seq(encoder_inputs,
                     tf.contrib.seq2seq.dynamic_decode(decoder)
 
                 outputs_logits = outputs[0]
-                return encoder_emb, decoder_emb, outputs_logits
+                return outputs_logits
 
             else:
                 st_toks = tf.convert_to_tensor(
@@ -159,18 +152,32 @@ class BiGRUModel(object):
             decoder_cell = tf.contrib.rnn.DropoutWrapper(
                 decoder_cell, output_keep_prob=0.50)
 
-        if not forward_only:
-            weights = tf.sequence_mask(
-                self.decoder_len, dtype=tf.float32)
+        with tf.variable_scope("embeddings"):
+            encoder_emb = tf.get_variable(
+                "enc_embedding", [source_vocab_size, embedding_size],
+                initializer=emb_init)
 
-            encoder_emb, decoder_emb, outputs_logits = \
-                seq2seq(self.encoder_inputs, self.encoder_len,
-                self.decoder_inputs, self.decoder_len,
-                source_vocab_size, target_vocab_size,
-                self.prev_att, self.beam_tok,
+            decoder_emb = tf.get_variable(
+                "dec_embedding", [target_vocab_size, embedding_size],
+                initializer=emb_init)
+
+            encoder_inputs_emb = tf.nn.embedding_lookup(
+                encoder_emb, self.encoder_inputs)
+
+            decoder_inputs_emb = tf.nn.embedding_lookup(
+                decoder_emb, self.decoder_inputs)
+
+        if not forward_only:
+            outputs_logits = seq2seq(
+                encoder_inputs_emb, decoder_inputs_emb,
+                self.encoder_len, self.decoder_len,
+                self.prev_att, None, None, target_vocab_size,
                 batch_size, state_size, embedding_size,
                 encoder_fw_cell, encoder_bw_cell, decoder_cell,
                 forward_only=False, scope='seq2seq', reuse=False, dtype=dtype)
+
+            weights = tf.sequence_mask(
+                self.decoder_len, dtype=tf.float32)
 
             loss_t = tf.contrib.seq2seq.sequence_loss(
                 outputs_logits, self.decoder_targets, weights,
@@ -204,10 +211,9 @@ class BiGRUModel(object):
             self.loss = tf.constant(0)
             self.init_state, self.att_states, \
                 self.beam_logsoftmax, self.beam_nxt_state = \
-                seq2seq(self.encoder_inputs, self.encoder_len,
-                self.decoder_inputs, self.decoder_len,
-                source_vocab_size, target_vocab_size,
-                self.prev_att, self.beam_tok,
+                seq2seq(encoder_inputs_emb, None,
+                self.encoder_len, None,
+                self.prev_att, self.beam_tok, decoder_emb, target_vocab_size,
                 batch_size, state_size, embedding_size,
                 encoder_fw_cell, encoder_bw_cell, decoder_cell,
                 forward_only=True, scope='seq2seq', reuse=False, dtype=dtype)
