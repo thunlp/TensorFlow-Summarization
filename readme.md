@@ -9,6 +9,9 @@ This is an implementation of sequence-to-sequence model using a bidirectional GR
 ## Dataset
 Please check [harvardnlp/sent-summary](https://github.com/harvardnlp/sent-summary).
 
+## Pre-trained Models
+[Download](https://drive.google.com/drive/folders/1IiwyHBzK7xvUtMrRY7VHzIRJzkzXn4LM?usp=sharing)
+
 ## Usage
 Please download the dataset and put all `.txt` into `data/`. 
 
