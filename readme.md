@@ -13,15 +13,82 @@ Please check [harvardnlp/sent-summary](https://github.com/harvardnlp/sent-summar
 [Download](https://drive.google.com/drive/folders/1IiwyHBzK7xvUtMrRY7VHzIRJzkzXn4LM?usp=sharing)
 
 ## Usage
-Please download the dataset and put all `.txt` into `data/`. 
 
-```python3 script/train.py``` can reproduce the experiments shown below. 
+### Setup Environment
+
+#### With GPU
+
+If you want to train the model and have Nvidia GPUs (like GTX 1080, GTX Titan, etc), please setup CUDA environment and install tensorflow-gpu.
+
+```
+> pip3 install -U tensorflow-gpu==1.1
+```
+
+You can check whether the GPU works by
+
+```
+> python3
+>>> import tensorflow
+>>>
+```
+and make sure there are no error outputs.
+
+#### Without GPU
+
+If you don't have a GPU, you can still use the pretrained models and generate summaries using your CPU.
+
+```
+> pip3 install -U tensorflow==1.1
+```
+
+### Model and Data
+Files should be organized like this.
+
+![](misc/files.png)
+
+Please find these files in the harvardnlp/sent-summary and rename them as
+
+```
+duc2003/input.txt -> test.duc2003.txt
+duc2004/input.txt -> test.duc2004.txt
+Giga/input.txt -> test.giga.txt
+```
+
+### Train Model
+
+```> python3 script/train.py``` can reproduce the experiments shown below. 
 
 By doing so, it will train 200k batches first. Then do generation on `[giga, duc2003, duc2004]` with beam_size in `[1, 10]` respectively every 20k batches. It will terminate at 300k batches. Also, the model will be saved every 20k batches. 
 
-```python3 script/test.py``` will automatically use the most updated model to do generation. 
+![](misc/train.png)
+
+### Test Model
+
+```> python3 script/test.py``` will automatically use the most updated model to do generation. 
+
+![](misc/test.png)
+
+To do customized test, please put input data as 
+
+```
+data/test.your_test_name.txt
+```
+
+Change `script/test.py` line 13-14 from
+
+```
+datasets = ["giga", "duc2003", "duc2004"]
+geneos = [True, False, False]
+```
+to
+
+```
+datasets = ["your_test_name"]
+geneos = [True]
+```
 
 For advanced users, ```python3 src/summarization.py -h``` can print help. Please check the code for details. 
+
 
 ## Implementation Details
 
